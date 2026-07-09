@@ -41,11 +41,35 @@ const DataPage = (() => {
       state.search = "";
       Store.addRow();
     });
+
+    const fileInput = document.createElement("input");
+    fileInput.type = "file";
+    fileInput.accept = ".csv,.txt,.xlsx,.xls,.xlsm";
+    fileInput.hidden = true;
+    fileInput.addEventListener("change", async () => {
+      const file = fileInput.files[0];
+      fileInput.value = "";
+      if (!file) return;
+      try {
+        const result = await Importer.importFile(file);
+        const mode = await Importer.confirmImport(result);
+        if (!mode) return;
+        state.search = "";
+        const n = Store.importRows(result.records, mode);
+        flashSaved(`Imported ${n} rows — dashboards updated`);
+      } catch (err) {
+        alert("Import failed: " + err.message);
+      }
+    });
+    const importBtn = button("Import Excel / CSV", "btn btn-secondary", () => fileInput.click());
+
     const exportBtn = button("Export CSV", "btn btn-secondary", exportCsv);
     const resetBtn = button("Reset data", "btn btn-ghost", () => {
       if (confirm("Discard all edits and restore the original spreadsheet data?")) Store.reset();
     });
     toolbar.appendChild(addBtn);
+    toolbar.appendChild(importBtn);
+    toolbar.appendChild(fileInput);
     toolbar.appendChild(exportBtn);
     toolbar.appendChild(resetBtn);
     root.appendChild(toolbar);
@@ -58,7 +82,7 @@ const DataPage = (() => {
     const hint = document.createElement("p");
     hint.className = "section-note";
     hint.style.marginTop = "0.75rem";
-    hint.textContent = "Click any cell to edit — changes save automatically and update both dashboards. Budget accepts numbers (e.g. 25000).";
+    hint.textContent = "Click any cell to edit — changes save automatically and update both dashboards. Budget accepts numbers (e.g. 25000). Import accepts .xlsx, .xls, or .csv files whose first row has the Master-sheet column headers.";
     root.appendChild(hint);
 
     renderTable(root);
@@ -233,14 +257,14 @@ const DataPage = (() => {
     }
   }
 
-  function flashSaved() {
+  function flashSaved(message) {
     let el = document.querySelector(".save-flash");
     if (!el) {
       el = document.createElement("div");
       el.className = "save-flash";
-      el.textContent = "Saved — dashboards updated";
       document.body.appendChild(el);
     }
+    el.textContent = message || "Saved — dashboards updated";
     el.classList.add("show");
     clearTimeout(el._t);
     el._t = setTimeout(() => el.classList.remove("show"), 1600);

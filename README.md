@@ -9,11 +9,21 @@ A dependency-free webapp for exploring and editing the tactical plan from
 |---|---|
 | **By category** | Tactics grouped by the 5 categories — KPI tiles, tactics/priority/status/budget charts, and per-category detail cards with subcategory, deliverable, tactic, status, budget and function. |
 | **By function** | The mirror view, grouped by the 10 functions, with category as the cross-detail. |
-| **Data** | The full Master-sheet table. Click any cell to edit; constrained columns (Function, Category, Priority, Status, …) offer a dropdown of existing values plus free-text entry. Add rows, delete rows, export CSV, or reset to the original spreadsheet data. |
+| **Data** | The full Master-sheet table. Click any cell to edit; constrained columns (Function, Category, Priority, Status, …) offer a dropdown of existing values plus free-text entry. Add rows, delete rows, import Excel/CSV, export CSV, or reset to the original spreadsheet data. |
 
 Every edit persists to `localStorage` and re-renders both dashboards
-immediately. Filters (status, priority, free-text search) sit in one row above
-each dashboard and scope every chart, KPI and detail card beneath them.
+immediately. Filters (group dropdown, status, priority, free-text search) sit
+in one row above each dashboard and scope every chart, KPI and detail card
+beneath them.
+
+**Importing files:** the Data page accepts `.xlsx`/`.xls` workbooks (it picks
+the sheet named "Master sheet" if present, otherwise the first sheet) and
+`.csv` files. The first row must contain the Master-sheet column headers —
+matching is case- and punctuation-insensitive, unknown columns are ignored,
+and missing columns import as empty. You choose whether the file replaces the
+current data or appends to it. CSV parsing is native (quoted fields, embedded
+commas/newlines); Excel parsing uses the vendored SheetJS build, loaded only
+when an Excel file is uploaded.
 
 ## Running it
 
@@ -34,6 +44,8 @@ index.html        shell: hero, tabs, view container
 css/styles.css    design tokens (Raleway, orange/deep-blue palette per design.md)
 js/data.js        seed data extracted from the Excel Master sheet
 js/store.js       localStorage-backed store with pub/sub
+js/importer.js    Excel/CSV upload: native CSV parser + lazy-loaded SheetJS
+js/vendor/        vendored SheetJS mini build (xlsx parsing, loaded on demand)
 js/charts.js      SVG chart primitives (bars, stacked bars, donut, tooltips)
 js/dashboards.js  the two grouped dashboard views
 js/datapage.js    the editable data grid

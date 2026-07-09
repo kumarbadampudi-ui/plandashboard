@@ -87,6 +87,15 @@ const Store = (() => {
       notify();
     },
 
+    /* Bulk import from an uploaded file. mode: "replace" | "append". */
+    importRows(records, mode) {
+      const incoming = normalize(records);
+      rows = mode === "append" ? rows.concat(incoming) : incoming;
+      persist();
+      notify();
+      return incoming.length;
+    },
+
     /* Distinct non-empty values of a field, in first-appearance order. */
     distinct(field) {
       const seen = [];
