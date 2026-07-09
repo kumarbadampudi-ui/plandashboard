@@ -26,8 +26,8 @@ const Dashboards = (() => {
 
   /* per-view filter state, kept across re-renders */
   const state = {
-    category: { status: "", priority: "", search: "" },
-    function: { status: "", priority: "", search: "" }
+    category: { group: "", status: "", priority: "", search: "" },
+    function: { group: "", status: "", priority: "", search: "" }
   };
 
   function groupValue(row, field) {
@@ -89,13 +89,27 @@ const Dashboards = (() => {
     const f = state[mode];
 
     const allRows = Store.getRows();
-    const rows = applyFilters(allRows, f);
+    let rows = applyFilters(allRows, f);
+
+    /* group selector options come from ALL rows (not the filtered slice), so
+       the dropdown never loses entries as other filters narrow the view */
+    const groupOptions = [];
+    allRows.forEach(r => {
+      const g = groupValue(r, groupField);
+      if (!groupOptions.includes(g)) groupOptions.push(g);
+    });
+    groupOptions.sort((a, b) => a.localeCompare(b));
+    if (f.group && !groupOptions.includes(f.group)) f.group = "";
+    if (f.group) rows = rows.filter(r => groupValue(r, groupField) === f.group);
 
     root.textContent = "";
 
     /* ---- filter row (one row, above everything it scopes) ---- */
     const bar = document.createElement("div");
     bar.className = "filter-row";
+    bar.appendChild(filterSelect(groupLabel, ["", ...groupOptions], f.group,
+      v => { f.group = v; render(root, mode); },
+      `All ${groupLabel.toLowerCase() === "category" ? "categories" : "functions"}`));
     bar.appendChild(filterSelect("Status", ["", ...STATUS_ORDER], f.status, v => { f.status = v; render(root, mode); }));
     bar.appendChild(filterSelect("Priority", ["", ...PRIORITY_ORDER], f.priority, v => { f.priority = v; render(root, mode); }));
 
@@ -112,12 +126,12 @@ const Dashboards = (() => {
     searchField.appendChild(sl); searchField.appendChild(si);
     bar.appendChild(searchField);
 
-    if (f.status || f.priority || f.search) {
+    if (f.group || f.status || f.priority || f.search) {
       const clear = document.createElement("button");
       clear.type = "button";
       clear.className = "btn btn-ghost filter-clear";
       clear.textContent = "Clear filters";
-      clear.addEventListener("click", () => { f.status = ""; f.priority = ""; f.search = ""; render(root, mode); });
+      clear.addEventListener("click", () => { f.group = ""; f.status = ""; f.priority = ""; f.search = ""; render(root, mode); });
       bar.appendChild(clear);
     }
     root.appendChild(bar);
@@ -145,31 +159,48 @@ const Dashboards = (() => {
     kpis.appendChild(kpi("Budget in view", totalBudget > 0 ? Charts.fmtMoney(totalBudget) : "$0", totalBudget > 0 ? "sum of entered budgets" : "add budgets on the Data page"));
     root.appendChild(kpis);
 
-    /* ---- charts ---- */
+    /* ---- charts ----
+       Default: bars per group. With a single group selected, the bar charts
+       pivot to the cross dimension so the view reads as a drill-down instead
+       of a one-bar chart. */
+    const drill = Boolean(f.group);
+    const chartField = drill ? crossField : groupField;
+    const chartDim = drill ? crossLabel : groupLabel;
+    const chartGroups = new Map();
+    rows.forEach(r => {
+      const g = groupValue(r, chartField);
+      if (!chartGroups.has(g)) chartGroups.set(g, []);
+      chartGroups.get(g).push(r);
+    });
+    const chartNames = [...chartGroups.keys()].sort((a, b) => chartGroups.get(b).length - chartGroups.get(a).length);
+    const chartColorOf = chartField === "category" ? catColor : () => FUNCTION_COLOR;
+
     const grid = document.createElement("div");
     grid.className = "chart-grid";
 
-    const c1 = chartCard(`Tactics by ${groupLabel.toLowerCase()}`, "Click a bar to jump to its details");
-    Charts.hBars(c1.body, groupNames.map(g => ({
-      label: g, value: groups.get(g).length, color: colorOf(g), sub: "tactics"
+    const inSel = drill ? ` in ${f.group}` : "";
+    const c1 = chartCard(`Tactics by ${chartDim.toLowerCase()}${inSel}`,
+      drill ? `How ${f.group} breaks down by ${chartDim.toLowerCase()}` : "Click a bar to jump to its details");
+    Charts.hBars(c1.body, chartNames.map(g => ({
+      label: g, value: chartGroups.get(g).length, color: chartColorOf(g), sub: "tactics"
     })), {
-      onClick: item => revealGroup(root, item.label),
-      title: `Tactics by ${groupLabel.toLowerCase()}`
+      onClick: drill ? null : item => revealGroup(root, item.label),
+      title: `Tactics by ${chartDim.toLowerCase()}`
     });
     grid.appendChild(c1.card);
 
-    const c2 = chartCard("Priority mix", `Must do → Nice-to-have per ${groupLabel.toLowerCase()}`);
-    Charts.stackedHBars(c2.body, groupNames.map(g => ({
+    const c2 = chartCard(`Priority mix${inSel}`, `Must do → Nice-to-have per ${chartDim.toLowerCase()}`);
+    Charts.stackedHBars(c2.body, chartNames.map(g => ({
       label: g,
       segments: PRIORITY_ORDER.map(p => ({
         key: p, color: PRIORITY_COLORS[p],
-        value: groups.get(g).filter(r => r.priority === p).length
+        value: chartGroups.get(g).filter(r => r.priority === p).length
       }))
     })));
     Charts.legend(c2.body, PRIORITY_ORDER.map(p => ({ label: p, color: PRIORITY_COLORS[p] })));
     grid.appendChild(c2.card);
 
-    const c3 = chartCard("Status overview", "All tactics in the current view");
+    const c3 = chartCard(`Status overview${inSel}`, "All tactics in the current view");
     Charts.donut(c3.body, STATUS_ORDER.map(s => ({
       key: s, color: STATUS_COLORS[s],
       value: rows.filter(r => Store.statusOf(r) === s).length
@@ -180,10 +211,10 @@ const Dashboards = (() => {
     })));
     grid.appendChild(c3.card);
 
-    const c4 = chartCard(`Budget by ${groupLabel.toLowerCase()}`, "Sum of budgets entered on the Data page");
-    Charts.hBars(c4.body, groupNames.map(g => ({
-      label: g, value: groups.get(g).reduce((s, r) => s + Store.budgetOf(r), 0),
-      color: colorOf(g), sub: "budget"
+    const c4 = chartCard(`Budget by ${chartDim.toLowerCase()}${inSel}`, "Sum of budgets entered on the Data page");
+    Charts.hBars(c4.body, chartNames.map(g => ({
+      label: g, value: chartGroups.get(g).reduce((s, r) => s + Store.budgetOf(r), 0),
+      color: chartColorOf(g), sub: "budget"
     })), {
       format: Charts.fmtMoney,
       emptyText: "No budgets entered yet — add amounts in the Budget column on the Data page and this chart fills in."
@@ -205,7 +236,9 @@ const Dashboards = (() => {
     const list = document.createElement("div");
     list.className = "group-list";
     groupNames.forEach(g => {
-      list.appendChild(groupCard(g, groups.get(g), colorOf(g), crossField, crossLabel));
+      const card = groupCard(g, groups.get(g), colorOf(g), crossField, crossLabel);
+      if (f.group) card.open = true; // single group selected — show its details right away
+      list.appendChild(card);
     });
     if (!groupNames.length) {
       const empty = document.createElement("div");
@@ -216,7 +249,7 @@ const Dashboards = (() => {
     root.appendChild(list);
   }
 
-  function filterSelect(label, options, current, onChange) {
+  function filterSelect(label, options, current, onChange, allLabel) {
     const wrap = document.createElement("div");
     wrap.className = "filter-field";
     const l = document.createElement("label");
@@ -226,7 +259,7 @@ const Dashboards = (() => {
     options.forEach(o => {
       const opt = document.createElement("option");
       opt.value = o;
-      opt.textContent = o === "" ? "All" : o;
+      opt.textContent = o === "" ? (allLabel || "All") : o;
       if (o === current) opt.selected = true;
       sel.appendChild(opt);
     });
