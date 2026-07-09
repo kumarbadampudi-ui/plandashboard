@@ -221,6 +221,34 @@ const Dashboards = (() => {
     });
     grid.appendChild(c4.card);
 
+    /* ---- extra breakdown charts ----
+       Category dashboard: subcategory + function; function dashboard: category.
+       When drilled into one group, chart 1 already pivots to the cross
+       dimension, so the cross chart is skipped to avoid a duplicate. */
+    const extraDims = [];
+    if (mode === "category") {
+      extraDims.push({ field: "subcategory", label: "Subcategory" });
+      if (!drill) extraDims.push({ field: "function", label: "Function" });
+    } else if (!drill) {
+      extraDims.push({ field: "category", label: "Category" });
+    }
+
+    extraDims.forEach(dim => {
+      const counts = new Map();
+      rows.forEach(r => {
+        const g = groupValue(r, dim.field);
+        counts.set(g, (counts.get(g) || 0) + 1);
+      });
+      const names = [...counts.keys()].sort((a, b) => counts.get(b) - counts.get(a));
+      const colorFn = dim.field === "category" ? catColor : () => FUNCTION_COLOR;
+      const card = chartCard(`Tactics by ${dim.label.toLowerCase()}${inSel}`,
+        `Distribution across ${names.length} ${dim.label.toLowerCase() === "category" ? "categories" : dim.label.toLowerCase() === "function" ? "functions" : "subcategories"}`);
+      Charts.hBars(card.body, names.map(g => ({
+        label: g, value: counts.get(g), color: colorFn(g), sub: "tactics"
+      })), { title: `Tactics by ${dim.label.toLowerCase()}` });
+      grid.appendChild(card.card);
+    });
+
     root.appendChild(grid);
 
     /* ---- group detail cards ---- */
